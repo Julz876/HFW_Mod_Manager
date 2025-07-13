@@ -26,9 +26,16 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Files used for testing
+pack/
+.zip
+build.txt
+decima.ini
+backup/
+
 # PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+#  Usually, these files are written by a Python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other info into it.
 *.manifest
 *.spec
 
