@@ -139,6 +139,12 @@ Buttons:
 
 ---
 
+## Credits
+
+Special thanks to **id-daemon** for developing the packing tool.
+
+---
+
 ## License
 
 This project is licensed under the GNU GPL v3.0 License.
