@@ -92,7 +92,7 @@ If you wish to contribute or run from source:
 
 6. **Activate**: Select the checkbox next to the variation you want to install. Only one variation can be enabled per mod at a time.
 
-7. **Pack**: Click **Pack Activated Mods** to build a new `package.20.01.core.stream` and inject it into the game.
+7. **Pack**: Click **Pack Activated Mods** to build a new `package.20.00.core.stream` and inject it into the game.
 
 Buttons:
 
