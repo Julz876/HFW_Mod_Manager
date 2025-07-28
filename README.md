@@ -82,7 +82,8 @@ If you wish to contribute or run from source:
 
    Run `HFW_MM.exe`
 
-2. **Select Game Folder**: Click **Browse**, choose the root of your HFW installation (the folder containing `LocalCacheWinGame`).
+2. **Select Game Folder**: Click **Browse**, choose the root of your HFW installation (the folder containing `HorizonForbiddenWest.exe`).
+   For example `"E:\Steam\steamapps\common\Horizon Forbidden West Complete Edition"`
 
 3. **Drag & Drop**: Drag mod folders or ZIPs into the drag and drop area.
 
