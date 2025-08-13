@@ -19,16 +19,16 @@ import zlib
 import hashlib
 
 # Feature flags
+FEAT_REGISTRY_META  = True
+FEAT_ORDER_UI       = True
+FEAT_ACTIVATED_SAVE = True
+FEAT_IMPORT_ALL     = True
+FEAT_SMART_DELETE   = True
+FEAT_STRICT_HASH    = False
 FEAT_UPDATE_CHECKER = False
 FEAT_HELP_WEBENGINE = False
-FEAT_REGISTRY_META  = False
-FEAT_ORDER_UI       = False
-FEAT_ACTIVATED_SAVE = False
 FEAT_CONFLICT_COLOR = False
 FEAT_PILLOW_ICC     = False
-FEAT_STRICT_HASH    = False
-FEAT_IMPORT_ALL     = False
-FEAT_SMART_DELETE   = False
 # -------------------------
 
 # Configure logging
@@ -50,6 +50,8 @@ KNOWN_HASHES = {
 }
 
 img_ext = ['.png', '.jpg', '.jpeg','.bmp', '.gif' ]
+temp_ = Path.cwd() / 'temp_'
+temp_drag = Path.cwd() / 'temp_drag'
 
 
 def _load_mod_registry(path: Path = REGISTRY_PATH) -> dict:
@@ -62,7 +64,7 @@ def _load_mod_registry(path: Path = REGISTRY_PATH) -> dict:
     return {}
 
 def _normalize_key(name: str) -> str:
-    return name.replace(" ", "_")
+    return name.replace(" ", " ")
 
 def normalize_mod_name(raw_name: str) -> str:
     """
@@ -731,15 +733,11 @@ class ModManager(QWidget):
 
             self.status_label.setText("⚠️ Packing disabled: Decima_pack.exe missing.")
 
-        temp_ = Path.cwd() / 'temp_'
-        temp_drag = Path.cwd() / 'temp_drag'
-        if temp_.exists() or temp_drag.exists():
-            try:
-                shutil.rmtree(temp_)
-                shutil.rmtree(temp_drag)
-                print("[Startup Cleanup] Removed leftover temp_")
-            except Exception as e:
-                print(f"[Startup Cleanup] Failed: {e}")
+        self.temp_ = temp_
+        self.temp_drag = temp_drag
+
+        # if temp_ or temp_drag:
+        #     self.clear_temp(self.temp_, self.temp_drag)
 
         self.refresh_list()
 
@@ -1116,9 +1114,19 @@ class ModManager(QWidget):
                             print(f"[Cleanup] Failed to remove {d}: {e}")
 
 
+    def clear_temp(self, temp_, temp_drag):
+        if temp_.exists() or temp_drag.exists():
+            try:
+                shutil.rmtree(temp_)
+                shutil.rmtree(temp_drag)
+                print("[Startup Cleanup] Removed leftover temp_")
+            except Exception as e:
+                print(f"[Startup Cleanup] Failed: {e}")
+
     def refresh_list(self):
         # Clear existing tree
         self.mod_list.clear()
+        self.clear_temp(temp_, temp_drag)
         
         self.process_mods_folder()
         if FEAT_ACTIVATED_SAVE:
@@ -1138,6 +1146,8 @@ class ModManager(QWidget):
                 child_path = child.data(0, Qt.UserRole)
                 if child_path and os.path.normcase(os.path.normpath(str(child_path))) in saved_paths:
                     child.setCheckState(0, Qt.Checked)
+
+        self.sort_mods_by_priority()
 
         # self.mod_list.expandAll()
         self.status_label.setText("Mod list refreshed.")
@@ -1192,8 +1202,11 @@ class ModManager(QWidget):
         # Sort by unique_id descending
         # mods_to_add.sort(reverse=True, key=lambda x: x[0]) # Use unique id
             
-        # ascending priority: 0 = highest
-        mods_to_add.sort(key=lambda x: x[0])  # Use priority range
+        # ascending priority: 0 = highest first
+        # mods_to_add.sort(key=lambda x: x[0])  # Use priority range
+
+        # descending priority: 5 = lowest first
+        mods_to_add.sort(key=lambda x: x[0])
 
         # load saved order if it exists
         saved_order = []
@@ -1527,7 +1540,7 @@ class ModManager(QWidget):
             mods_to_sort.append((priority, mod_path, mod_name, checked, flags, children))
 
         # Sort ascending (0 = highest)
-        mods_to_sort.sort(key=lambda x: x[0])
+        mods_to_sort.sort(key=lambda x: x[0], reverse=True)
 
         # Rebuild the tree
         self.mod_list.clear()
@@ -1550,6 +1563,7 @@ class ModManager(QWidget):
 
         # Refresh the “01., 02.” labels
         self.update_mod_order_labels()
+
         self.status_label.setText("Sorted mods by priority.")
 
     def save_mod_order(self):
