@@ -27,7 +27,7 @@ FEAT_SMART_DELETE   = True
 FEAT_STRICT_HASH    = False
 FEAT_UPDATE_CHECKER = False
 FEAT_HELP_WEBENGINE = False
-FEAT_CONFLICT_COLOR = False
+FEAT_CONFLICT_COLOR = True
 FEAT_PILLOW_ICC     = False
 # -------------------------
 
@@ -66,7 +66,7 @@ def _load_mod_registry(path: Path = REGISTRY_PATH) -> dict:
 def _normalize_key(name: str) -> str:
     return name.replace(" ", " ")
 
-def normalize_mod_name(raw_name: str) -> str:
+def _normalize_mod_name(raw_name: str) -> str:
     """
     Extracts the base mod name by removing versioning patterns like:
     - <name>-<pkg>-<major>-<minor>-<build>
@@ -87,7 +87,7 @@ def normalize_mod_name(raw_name: str) -> str:
         return raw_name.strip()
 
 def _normpath(p: str) -> str:
-        return os.path.normcase(os.path.normpath(p))
+    return os.path.normcase(os.path.normpath(p))
 
 def _candidate_roots(mods_dir: Path, display_name: str, top_item: QTreeWidgetItem) -> list[Path]:
     if not FEAT_SMART_DELETE:
@@ -125,7 +125,7 @@ def _candidate_roots(mods_dir: Path, display_name: str, top_item: QTreeWidgetIte
     for key, meta in reg.items():
         if key == "_meta":
             continue
-        if normalize_mod_name(_normalize_key(key)) == wanted:
+        if _normalize_mod_name(_normalize_key(key)) == wanted:
             src = meta.get("source_path", "")
             if src:
                 ps = Path(src)
@@ -143,7 +143,7 @@ def _candidate_roots(mods_dir: Path, display_name: str, top_item: QTreeWidgetIte
     for d in mods_dir.iterdir():
         try:
             name_stem = _normalize_key(d.stem)
-            if normalize_mod_name(name_stem) == wanted:
+            if _normalize_mod_name(name_stem) == wanted:
                 cand.append(d)
         except Exception:
             pass
@@ -167,13 +167,13 @@ def _candidate_roots(mods_dir: Path, display_name: str, top_item: QTreeWidgetIte
     return uniq
 
 
-def compute_crc32(data: bytes) -> int:
+def _compute_crc32(data: bytes) -> int:
     return zlib.crc32(data) & 0xffffffff
 
-def compute_sha1(data: bytes) -> str:
+def _compute_sha1(data: bytes) -> str:
     return hashlib.sha1(data).hexdigest()
 
-def validate_original_file(file_path: Path) -> tuple[bool, str]:
+def _validate_original_file(file_path: Path) -> tuple[bool, str]:
     name = file_path.name
     if name not in KNOWN_HASHES:
         return True, ""  # skip unknown files
@@ -183,8 +183,8 @@ def validate_original_file(file_path: Path) -> tuple[bool, str]:
 
     try:
         data = file_path.read_bytes()
-        actual_crc = compute_crc32(data)
-        actual_sha1 = compute_sha1(data)
+        actual_crc = _compute_crc32(data)
+        actual_sha1 = _compute_sha1(data)
 
         crc_match = actual_crc == expected_crc
         sha1_match = actual_sha1.lower() == expected_sha1.lower()
@@ -220,7 +220,7 @@ def _write_json_atomic(path: Path, data: dict):
             pass
 
 
-def find_mod_images(folder: Path) -> Path | None:
+def _find_mod_images(folder: Path) -> Path | None:
     if not folder.is_dir():
         return None
 
@@ -237,7 +237,7 @@ def find_mod_images(folder: Path) -> Path | None:
 
     return None
 
-def load_pix(path: Path) -> QPixmap:
+def _load_pix(path: Path) -> QPixmap:
     if FEAT_PILLOW_ICC:
         from PIL import Image
         with Image.open(path) as img:
@@ -247,6 +247,46 @@ def load_pix(path: Path) -> QPixmap:
                 img.save(tmp.name, format="PNG")
                 return QPixmap(tmp.name)
     return QPixmap(str(path))
+
+
+def _safe_json_load(path: Path) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+def _file_sha1(path: Path) -> str:
+    try:
+        h = hashlib.sha1()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return ""
+
+def _file_mtime(path: Path) -> int:
+    try:
+        return int(path.stat().st_mtime)
+    except Exception:
+        return 0
+
+def _diff_fields(old: dict, new: dict, keys: list[str]) -> dict:
+    diffs = {}
+    for k in keys:
+        ov = old.get(k)
+        nv = new.get(k)
+        if ov != nv:
+            diffs[k] = (ov, nv)
+    return diffs
+
+def _short(val, n=80):
+    if val is None:
+        return ""
+    s = str(val).replace("\r\n", "\n").replace("\r", "\n").strip()
+    s = " ".join(s.split())  # collapse all whitespace/newlines
+    return (s[:n] + "…") if len(s) > n else s
 
 
 class PackingWorker(QObject):
@@ -338,7 +378,7 @@ class DropTreeWidget(QTreeWidget):
             return
 
         path = Path(mod_path)
-        img = find_mod_images(path)# or (path / 'preview.png')
+        img = _find_mod_images(path)# or (path / 'preview.png')
         if not img:
             return
 
@@ -356,7 +396,7 @@ class DropTreeWidget(QTreeWidget):
         layout = QVBoxLayout(dlg)
         label = QLabel()
         label.setAlignment(Qt.AlignCenter)
-        label.setPixmap(load_pix(img_path).scaled(580, 580, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+        label.setPixmap(_load_pix(img_path).scaled(580, 580, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
         layout.addWidget(label)
 
         btns = QDialogButtonBox(QDialogButtonBox.Close)
@@ -404,7 +444,7 @@ class DropTreeWidget(QTreeWidget):
 
         for url in event.mimeData().urls():
             path = Path(url.toLocalFile())
-            mod_name = normalize_mod_name(path.with_suffix('').name)
+            mod_name = _normalize_mod_name(path.with_suffix('').name)
 
             result = None
             if path.is_dir():
@@ -435,7 +475,7 @@ class DropTreeWidget(QTreeWidget):
 
 
     def handle_zip_input(self, path: Path, mods_folder: Path, main_win) -> tuple[Path, str] | None:
-        mod_name = normalize_mod_name(path.with_suffix('').name)
+        mod_name = _normalize_mod_name(path.with_suffix('').name)
         display_name = mod_name
         self.tmp_root = Path.cwd() / "temp_drag"
 
@@ -490,7 +530,7 @@ class DropTreeWidget(QTreeWidget):
             return None
 
     def handle_dir_input(self, path: Path, mod_name: str, main_win) -> tuple[Path, str] | None:
-        vars_dir = [d for d in path.iterdir() if d.is_dir() and find_mod_images(d) is not None] # keep sub-folders with mod images
+        vars_dir = [d for d in path.iterdir() if d.is_dir() and _find_mod_images(d) is not None] # keep sub-folders with mod images
         if len(vars_dir) > 1:
             dlg = VariationDialog(mod_name, path, parent=main_win)
             if dlg.exec_() == QDialog.Accepted:
@@ -606,7 +646,7 @@ class VariationDialog(QDialog):
         # Gather valid variation folders with preview images
         self.variations = [
             d for d in self.mod_path.iterdir()
-            if d.is_dir() and find_mod_images(d) is not None
+            if d.is_dir() and _find_mod_images(d) is not None
         ]
 
         # Main layout
@@ -686,11 +726,11 @@ class VariationDialog(QDialog):
             return
         
         var = self.variations[idx]
-        img_path = find_mod_images(var)
+        img_path = _find_mod_images(var)
 
         if img_path and img_path.exists():
             # pix = QPixmap(str(img_path))
-            pix = load_pix(img_path)
+            pix = _load_pix(img_path)
             if not pix.isNull():
                 self.image_label.setPixmap(pix.scaled(
                     self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
@@ -714,6 +754,16 @@ class ModManager(QWidget):
         self.setWindowIcon(QIcon(self.icon_path))
 
         self.metadata = {}
+        self.version = 0.6 # Current app version
+        self.prefs = QSettings()
+
+        # Clean up old lists
+        legacy = Path.cwd() / 'activated.list'
+        if legacy.exists():
+            legacy.rename(legacy.with_suffix('.legacy'))
+        legacy_ = Path.cwd() / 'mod_order.json'
+        if legacy_.exists():
+            legacy_.rename(legacy_.with_suffix('.legacy'))
 
         # Temp workspace for packing
         self.temp_dir = Path.cwd() / 'pack'
@@ -740,6 +790,8 @@ class ModManager(QWidget):
         #     self.clear_temp(self.temp_, self.temp_drag)
 
         self.refresh_list()
+
+        print("Settings file:", self.prefs.fileName()) # For testing
 
     def init_ui(self):
         self.temp_dir.mkdir(exist_ok=True)
@@ -777,7 +829,7 @@ class ModManager(QWidget):
 
         # Dark Mode Toggle
         self.dark_mode_checkbox = QCheckBox("Dark Mode")
-        self.dark_mode_checkbox.stateChanged.connect(self.toggle_dark_mode)
+        self.dark_mode_checkbox.stateChanged.connect(self.on_dark_mode_toggled)
         tl.addWidget(self.dark_mode_checkbox)
 
         # Conlict Mode Toggle
@@ -797,10 +849,10 @@ class ModManager(QWidget):
         btn_down.setToolTip("Moves the selected item down in the list.")
 
         if FEAT_ORDER_UI:
-            btn_sort_priority = QPushButton("↕ Sort by Priority")
+            btn_sort_priority = QPushButton("↕ Sort by Group")
             btn_sort_priority.clicked.connect(self.sort_mods_by_priority)
             tl.addWidget(btn_sort_priority)
-            btn_sort_priority.setToolTip("Sort the list by priority.")
+            btn_sort_priority.setToolTip("Sort the list by priority group.")
 
             btn_save_order = QPushButton("💾 Save Order")
             btn_save_order.clicked.connect(self.save_mod_order)
@@ -811,6 +863,17 @@ class ModManager(QWidget):
             btn_load_order.clicked.connect(self.apply_saved_mod_order)
             tl.addWidget(btn_load_order)
             btn_load_order.setToolTip("Load previously saved order.")
+
+            self.notify_meta_changes = QCheckBox("Notify change")
+            self.notify_meta_changes.setToolTip("Notify when a mod's modinfo.json changed since last scan.")
+            # load saved value
+            notify_on = self.prefs.value("ui/notify_meta_changes", True, type=bool)
+            self.notify_meta_changes.setChecked(notify_on)
+            self.notify_meta_changes.stateChanged.connect(
+                lambda _: (self.prefs.setValue("ui/notify_meta_changes", self.notify_meta_changes.isChecked()),
+                        self.prefs.sync())
+            )
+            tl.addWidget(self.notify_meta_changes)
 
         tl.addStretch()
         main_layout.addLayout(tl)
@@ -825,12 +888,12 @@ class ModManager(QWidget):
         about_layout = QVBoxLayout()
         logo_path = self.icon_path
         self.logo_thumb= QLabel()
-        pixmap = load_pix(logo_path)
+        pixmap = _load_pix(logo_path)
         self.logo_thumb.setFixedSize(200, 200)
         self.logo_thumb.setPixmap(pixmap)
         self.logo_thumb.setScaledContents(True)
         
-        self.version_label = QLabel("Version: 0.3")
+        self.version_label = QLabel(f"Version: {self.version}")
         github_link = QLabel("Check for updates at: <a href='https://github.com/Julz876/HFW_Mod_Manager/releases'>HFW Mod Manager</a>")
         github_link.setOpenExternalLinks(True)
 
@@ -840,7 +903,6 @@ class ModManager(QWidget):
 
         # Schedule update checks
         self.current_version = self.version_label.text().split(":")[-1].strip()
-        self.settings = QSettings("Julz876", "HFWModManager")
         # Initial check 1s
         if FEAT_UPDATE_CHECKER:
             QTimer.singleShot(1000, self.check_for_updates)
@@ -886,7 +948,7 @@ class ModManager(QWidget):
         pl.addWidget(self.image_label2)
         self.mod_list.currentItemChanged.connect(self.on_mod_selected)
         default_icon_path = self.icon_path
-        pix = load_pix(default_icon_path)
+        pix = _load_pix(default_icon_path)
         self.image_label2.setPixmap(
             pix.scaled(self.image_label2.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation,)
         )
@@ -944,19 +1006,19 @@ class ModManager(QWidget):
         # Read bare cache path from decima.ini (should include LocalCacheWinGame)
         if self.CONFIG_PATH.exists():
             cache_path = Path(self.CONFIG_PATH.read_text().strip())
-            # if pointing to cache, derive game folder
             if cache_path.name == 'LocalCacheWinGame':
                 game_path = cache_path.parent
                 self.select_game_dir.setText(str(game_path))
                 self.post_browse_setup(game_path)
             elif cache_path.exists():
-                # assume user saved full game path
                 self.select_game_dir.setText(str(cache_path))
                 self.post_browse_setup(cache_path)
 
-        if QSettings().value("dark_mode", True, type=bool):
-            self.dark_mode_checkbox.setChecked(True)
-            self.toggle_dark_mode()
+        dark_on = self.prefs.value("ui/dark_mode", True, type=bool)
+        self.dark_mode_checkbox.blockSignals(True)
+        self.dark_mode_checkbox.setChecked(dark_on)
+        self.dark_mode_checkbox.blockSignals(False)
+        self.apply_dark_mode(dark_on)
 
     def save_config(self, game_path: Path):
         # Save cache path including LocalCacheWinGame
@@ -964,20 +1026,23 @@ class ModManager(QWidget):
         with open(self.CONFIG_PATH, 'w') as f:
             f.write(str(cache_dir))
         
-        QSettings().setValue("dark_mode", self.dark_mode_checkbox.isChecked())
+    def on_dark_mode_toggled(self, checked: bool):
+        self.prefs.setValue("ui/dark_mode", checked)
+        self.apply_dark_mode(checked)
 
-    def toggle_dark_mode(self):
-        if self.dark_mode_checkbox.isChecked():
-            self.setStyleSheet(qdarktheme.load_stylesheet())
+    def apply_dark_mode(self, enabled: bool):
+        app = QApplication.instance()
+        if enabled:
+            app.setStyleSheet(qdarktheme.load_stylesheet())
         else:
-            self.setStyleSheet("")
+            app.setStyleSheet("")
 
 
     def check_for_updates(self):
         if not FEAT_UPDATE_CHECKER:
             return
         """Conditional‐GET against GitHub; on 403 use cached version, on 304 do nothing."""
-        settings = self.settings
+        settings = self.prefs
         url = "https://api.github.com/repos/Julz876/HFW_Mod_Manager/releases/latest"
         headers = {"User-Agent": "HFW Mod Manager"}
         # Send the last ETag so GitHub can reply “304 Not Modified”
@@ -1003,8 +1068,10 @@ class ModManager(QWidget):
         data = json.loads(resp.read().decode())
         if new_et := resp.getheader("ETag"):
             settings.setValue("update/etag", new_et)
+            settings.sync()
         latest = data.get("tag_name", "").lstrip("v")
         settings.setValue("update/latest_version", latest)
+        settings.sync()
 
         # Compare versions
         def ver_tuple(v): 
@@ -1061,7 +1128,7 @@ class ModManager(QWidget):
 
             if FEAT_STRICT_HASH:
                 # Validate before backing up
-                valid, detail = validate_original_file(orig)
+                valid, detail = _validate_original_file(orig)
                 if not valid:
                     QMessageBox.critical(
                         self,
@@ -1072,7 +1139,7 @@ class ModManager(QWidget):
                     )
                     continue
             else:
-                valid, detail = validate_original_file(orig)
+                valid, detail = _validate_original_file(orig)
                 if not valid:
                     print(f"[!] Warning: {detail} CRC mismatch (skipping strict validation)")
 
@@ -1123,12 +1190,89 @@ class ModManager(QWidget):
             except Exception as e:
                 print(f"[Startup Cleanup] Failed: {e}")
 
+    def _load_merge_metadata_for_entry(self, entry: Path, mod_name_stem: str, tmp_extract: Path, registry: dict,
+                                    changes_accum: list[tuple[str, dict]]):
+        meta_path = Path.cwd() / "mod.meta"
+        existing = registry.get(mod_name_stem, {}) if isinstance(registry.get(mod_name_stem), dict) else {}
+
+        # Find modinfo.json
+        modinfo_path = None
+        if entry.is_dir():
+            p = entry / "modinfo.json"
+            if p.exists(): modinfo_path = p
+        else:
+            # extracted temp
+            p = tmp_extract / "modinfo.json"
+            if p.exists(): modinfo_path = p
+            else:
+                pass
+
+        # Build base metadata
+        merged = {
+            "source_path": str(entry),
+            "mod_name": mod_name_stem,
+            "updated_at": int(time.time()),
+            **existing,
+        }
+
+        # New probe
+        probe = {
+            "modinfo_exists": bool(modinfo_path),
+            "modinfo_sha1": _file_sha1(modinfo_path) if modinfo_path else "",
+            "modinfo_mtime": _file_mtime(modinfo_path) if modinfo_path else 0,
+        }
+
+        previously = {
+            "modinfo_sha1": existing.get("_probe_modinfo_sha1", ""),
+            "modinfo_mtime": existing.get("_probe_modinfo_mtime", 0),
+            "modinfo_exists": existing.get("_probe_modinfo_exists", False),
+        }
+
+        # Parse fresh modinfo if present
+        fresh = {}
+        if modinfo_path and modinfo_path.exists():
+            fresh = _safe_json_load(modinfo_path)
+
+            # Only allow integer priority 0..5
+            pr = fresh.get("priority", merged.get("priority", 5))
+            if isinstance(pr, int) and 0 <= pr <= 5:
+                fresh["priority"] = pr
+            else:
+                fresh.pop("priority", None)
+            merged.update(fresh)
+
+        # Record probes
+        merged["_probe_modinfo_exists"] = probe["modinfo_exists"]
+        merged["_probe_modinfo_sha1"]   = probe["modinfo_sha1"]
+        merged["_probe_modinfo_mtime"]  = probe["modinfo_mtime"]
+
+        important_keys = ["mod_name", "author", "version", "description", "priority", "link"]
+        field_diffs = _diff_fields(existing, merged, important_keys)
+
+        source_changed = (
+            probe["modinfo_exists"] != previously["modinfo_exists"]
+            or (probe["modinfo_exists"] and probe["modinfo_sha1"] != previously["modinfo_sha1"])
+            or (probe["modinfo_exists"] and probe["modinfo_mtime"] != previously["modinfo_mtime"])
+        )
+
+        if source_changed or field_diffs:
+            # Save and remember to notify
+            registry[mod_name_stem] = merged
+            if field_diffs:
+                changes_accum.append((mod_name_stem, field_diffs))
+        else:
+            registry[mod_name_stem] = merged
+
+        return merged
+
     def refresh_list(self):
         # Clear existing tree
         self.mod_list.clear()
         self.clear_temp(temp_, temp_drag)
         
         self.process_mods_folder()
+        self.sort_mods_by_priority()
+
         if FEAT_ACTIVATED_SAVE:
             saved_paths = self.restore_checked_mods()
         else:
@@ -1138,16 +1282,14 @@ class ModManager(QWidget):
             top = self.mod_list.topLevelItem(i)
 
             top_path = top.data(0, Qt.UserRole)
-            if top_path and os.path.normcase(os.path.normpath(str(top_path))) in saved_paths:
+            if top_path and _normpath(str(top_path)) in saved_paths:
                 top.setCheckState(0, Qt.Checked)
 
             for j in range(top.childCount()):
                 child = top.child(j)
                 child_path = child.data(0, Qt.UserRole)
-                if child_path and os.path.normcase(os.path.normpath(str(child_path))) in saved_paths:
+                if child_path and _normpath(str(child_path)) in saved_paths:
                     child.setCheckState(0, Qt.Checked)
-
-        self.sort_mods_by_priority()
 
         # self.mod_list.expandAll()
         self.status_label.setText("Mod list refreshed.")
@@ -1167,66 +1309,62 @@ class ModManager(QWidget):
         local_temp_root.mkdir(parents=True, exist_ok=True)
 
         mods_to_add = []
-        
         meta_path = Path.cwd() / "mod.meta"
-
-        registry = _load_mod_registry()  # Read once
+        registry = _load_mod_registry()
+        changes_accum = []
 
         for entry in mods_folder.iterdir():
             if not (entry.is_dir() or entry.suffix.lower() == '.zip'):
                 continue
 
             mod_name_stem = _normalize_key(entry.stem)
-            # .replace("v1", " ")
-            mod_name = normalize_mod_name(mod_name_stem)
+            mod_name = _normalize_mod_name(mod_name_stem)
             tmp_extract = local_temp_root / f"{mod_name_stem}_extracted"
 
-            # Try registry first
-            metadata = registry.get(mod_name_stem)
+            if entry.is_file() and entry.suffix.lower() == '.zip':
+                needs_extract = not tmp_extract.exists() or not (Path.cwd() / "mod.meta").exists()
+                if needs_extract:
+                    if tmp_extract.exists():
+                        shutil.rmtree(tmp_extract)
+                    tmp_extract.mkdir()
+                    try:
+                        with ZipFile(entry) as z:
+                            z.extractall(tmp_extract)
+                    except Exception as e:
+                        print(f"[!] Failed to extract ZIP {entry.name}: {e}")
+                        continue
 
-            # Fallback to parsing if missing or malformed
-            if not isinstance(metadata, dict):
-                metadata = self.parse_mod_info(entry, mod_name_stem, tmp_extract, Path.cwd() / "mod.meta")
-                # reload registry entry
-                registry = _load_mod_registry()
-                metadata = registry.get(mod_name_stem, metadata)
+            metadata = self._load_merge_metadata_for_entry(entry, mod_name_stem, tmp_extract, registry, changes_accum)
 
-            # Use unique id
-            # unique_id = metadata.get("unique_id", 0)
-            # mods_to_add.append((unique_id, entry, mod_name, metadata))
-
-            # Use priority range
             priority = metadata.get("priority", 5)
             mods_to_add.append((priority, entry, mod_name, metadata))
 
-        # Sort by unique_id descending
-        # mods_to_add.sort(reverse=True, key=lambda x: x[0]) # Use unique id
-            
+        try:
+            _write_json_atomic(Path.cwd() / "mod.meta", registry)
+        except Exception as e:
+            print(f"[!] Failed to persist mod.meta: {e}")
+
+        if changes_accum and self.notify_meta_changes.isChecked():
+            lines = []
+            for name, diffs in changes_accum[:10]:  # cap to avoid huge popups
+                lines.append(f"• {_normalize_mod_name(name)}")
+                for k, (ov, nv) in diffs.items():
+                    limit = 80 if k == "description" else 40
+                    lines.append(f"    {k}: {_short(ov, limit)} → {_short(nv, limit)}")
+                lines.append("")  # blank line between mods
+
+            more = f"\n…and {len(changes_accum)-10} more." if len(changes_accum) > 10 else ""
+            QMessageBox.information(
+                self,
+                "Metadata updated",
+                "Detected changes in mod metadata:\n\n" + "\n".join(lines) + more
+            )
+
         # ascending priority: 0 = highest first
         # mods_to_add.sort(key=lambda x: x[0])  # Use priority range
 
         # descending priority: 5 = lowest first
         mods_to_add.sort(key=lambda x: x[0])
-
-        # load saved order if it exists
-        saved_order = []
-        order_file = Path.cwd() / "mod_order.json"
-        if order_file.exists():
-            try:
-                saved_order = json.load(order_file)
-            except:
-                saved_order = []
-
-            # build a dict for quick lookup
-            entry_to_mod = { str(entry): (priority, entry, name, metadata)
-                            for priority, entry, name, metadata in mods_to_add }
-
-            ordered = []
-            for path in saved_order:
-                if path in entry_to_mod:
-                    ordered.append(entry_to_mod.pop(path))
-            leftovers = sorted(entry_to_mod.values(), key=lambda x: x[0])
-            mods_to_add = ordered + leftovers
         
         if FEAT_REGISTRY_META:
             self.prune_mod_meta(meta_path, mods_folder)
@@ -1265,7 +1403,7 @@ class ModManager(QWidget):
 
             # handle directory variants/None-Variants
             if entry.is_dir():
-                vars_dir = [d for d in entry.iterdir() if d.is_dir() and find_mod_images(d) is not None]
+                vars_dir = [d for d in entry.iterdir() if d.is_dir() and _find_mod_images(d) is not None]
 
                 if len(vars_dir) == 1:
                     var = vars_dir[0]
@@ -1331,7 +1469,7 @@ class ModManager(QWidget):
                     top.setData(0, Qt.UserRole + 2, priority)
                 
                 # Read extracted content as a mod folder
-                vars_dir = [d for d in tmp_extract.iterdir() if d.is_dir() and find_mod_images(d) is not None]
+                vars_dir = [d for d in tmp_extract.iterdir() if d.is_dir() and _find_mod_images(d) is not None]
 
                 if len(vars_dir) > 1:
                     for var in vars_dir:
@@ -1409,7 +1547,7 @@ class ModManager(QWidget):
             registry["_meta"] = {
                 "schema": 1,
                 "last_write": int(time.time()),
-                "count": len([k for k in registry.keys() if k != "_meta"])
+                "count": len([k for k in registry.keys() if k != "_meta"]),
             }
 
             _write_json_atomic(meta_path, registry)
@@ -1447,28 +1585,16 @@ class ModManager(QWidget):
         except Exception as e:
             print(f"[!] prune_mod_meta failed: {e}")
 
-
     def restore_checked_mods(self):
-        save_file = Path.cwd() / 'activated.list'
-        if save_file.exists():
-            try:
-                with open(save_file, 'r', encoding='utf-8') as f:
-                    saved_paths = [os.path.normcase(os.path.normpath(line.strip())) for line in f if line.strip()]
-            except Exception as e:
-                print(f"[ERROR] Failed to load activated mods: {e}")
-                saved_paths = []
-        else:
-            saved_paths = []
-        
-        return saved_paths
+        paths = self.prefs.value("mods/activated_paths", [], type=list)
+        return [_normpath(p) for p in paths if p] # Normalize all paths
 
     def write_activated_list(self, checked_paths: list[str]):
-        save_file = Path.cwd() / 'activated.list'
         try:
-            with open(save_file, 'w', encoding='utf-8') as f:
-                for p in checked_paths:
-                    f.write(f"{p}\n")
-            print(f"[Saved activated mods] → {save_file}")
+            norm_paths = [_normpath(p) for p in checked_paths]
+            self.prefs.setValue("mods/activated_paths", norm_paths)
+            self.prefs.sync()
+            print(f"[Saved activated mods] → QSettings ({len(norm_paths)} paths)")
         except Exception as e:
             print(f"[ERROR] Failed to save activated mods: {e}")
 
@@ -1569,29 +1695,27 @@ class ModManager(QWidget):
     def save_mod_order(self):
         if not FEAT_ORDER_UI:
             return
+
         order = []
         for i in range(self.mod_list.topLevelItemCount()):
             item = self.mod_list.topLevelItem(i)
-            path = item.data(0, Qt.UserRole)           # the mod’s folder or ZIP path
-            order.append(path)
+            path = item.data(0, Qt.UserRole)
+            if path:
+                order.append(str(path))
 
         try:
-            with open(Path.cwd() / "mod_order.json", "w", encoding="utf-8") as f:
-                json.dump(order, f, indent=2)
+            self.prefs.setValue("mods/order", order)
+            self.prefs.sync()
             self.status_label.setText("Mod order saved.")
         except Exception as e:
-            QMessageBox.warning(self, "Save Order Failed", f"Could not write mod_order.json:\n{e}")
+            QMessageBox.warning(self, "Save Order Failed", f"Could not save mod order:\n{e}")
 
     def apply_saved_mod_order(self):
         if not FEAT_ORDER_UI:
             return
-        order_file = Path.cwd() / "mod_order.json"
-        if not order_file.exists():
-            return
 
-        try:
-            saved = json.load(order_file)
-        except:
+        saved = self.prefs.value("mods/order", [], type=list)
+        if not saved:
             return
 
         # Extract all current items into a list of data tuples
@@ -1603,7 +1727,6 @@ class ModManager(QWidget):
             name = top.data(0, Qt.UserRole + 1)
             checked = top.checkState(0)
             flags = top.flags()
-            # collect children
             children = []
             for j in range(top.childCount()):
                 c = top.child(j)
@@ -1616,7 +1739,7 @@ class ModManager(QWidget):
             mods.append((path, prio, name, checked, flags, children))
 
         # Build new ordered list using saved list
-        path_map = { path: (path, prio, name, checked, flags, children)
+        path_map = { str(path): (path, prio, name, checked, flags, children)
                     for path, prio, name, checked, flags, children in mods }
         ordered = []
         for p in saved:
@@ -1660,11 +1783,11 @@ class ModManager(QWidget):
             return
 
         mod_folder = Path(path_str)
-        img_path = find_mod_images(mod_folder)
+        img_path = _find_mod_images(mod_folder)
 
         if img_path and img_path.exists():
             # pix = QPixmap(str(img_path))
-            pix = load_pix(img_path)
+            pix = _load_pix(img_path)
             self.image_label2.setPixmap(
                 pix.scaled(
                     self.image_label2.size(),
@@ -1702,9 +1825,11 @@ class ModManager(QWidget):
 
 
         # Populate the labels (fall back to defaults)
+        self.meta_lbl.setWordWrap(True)
         self.meta_lbl.setText(metadata.get("mod_name", current.text(0)))
         self.meta_author.setText(f"by {metadata.get('author', '')}")
         self.meta_version.setText(f"version {metadata.get('version', '')}")
+        self.meta_notes.setWordWrap(True)
         self.meta_notes.setText(metadata.get("description", "Lazy mod maker here (They didnt include the modinfo file!) :)"))
 
         link = metadata.get("link", "")
@@ -1765,7 +1890,7 @@ class ModManager(QWidget):
                         _safe_remove(r)
                     zips = list(mods_dir.glob("*.zip"))
                     for z in zips:
-                        if normalize_mod_name(_normalize_key(z.stem)) == normalize_mod_name(_normalize_key(str(display_name))):
+                        if _normalize_mod_name(_normalize_key(z.stem)) == _normalize_mod_name(_normalize_key(str(display_name))):
                             _safe_remove(z)
 
                 # Remove from tree
@@ -2045,7 +2170,7 @@ class ModManager(QWidget):
         self.status_label.setText("Restored game files and cleared pack mods.")
 
     def check_conflicts(self):
-        IGNORED_EXTENSIONS = { img_ext, '.txt', '.md', '.ini'}
+        IGNORED_EXTENSIONS = { '.png', '.jpg', '.jpeg','.bmp', '.gif', '.txt', '.md', '.ini'}
 
         # Build a map of filename → count
         name_counts = {}
@@ -2082,12 +2207,16 @@ class ModManager(QWidget):
                                 conflict = True
                                 conflicts.add(f.name)
                                 break
+                if self.prefs.value("ui/dark_mode", True):
+                    test = Qt.white
+                else:
+                    test = Qt.black
 
-                child.setForeground(0, Qt.yellow if conflict else Qt.white)
+                child.setForeground(0, Qt.yellow if conflict else test)
                 if conflict:
                     conflict_in_top = True
 
-            top.setForeground(0, Qt.yellow if conflict_in_top else Qt.white)
+            top.setForeground(0, Qt.yellow if conflict_in_top else test)
 
         return list(conflicts)
     
@@ -2107,10 +2236,11 @@ class ModManager(QWidget):
         for mod_path in mod_paths:
             if mod_path.is_dir():
                 for f in mod_path.iterdir():
-                    if (
-                        (f.suffix.lower() == '.stream' and '_' in f.stem and f.stem.endswith(('mesh', 'texture')))
-                        or (f.suffix.lower() == '.core' and all(c in '0123456789ABCDEFabcdef' for c in _normalize_key(f.stem)))
-                    ):
+                    if f.suffix.lower() in ('.stream', '.core'):
+                    # if (
+                    #     (f.suffix.lower() == '.stream' and '_' in f.stem and f.stem.endswith(('mesh', 'texture')))
+                    #     or (f.suffix.lower() == '.core' and all(c in '0123456789ABCDEFabcdef' for c in _normalize_key(f.stem)))
+                    # ):
                         shutil.copy(f, temp_dir / f.name)
                         print(f"[Top-Level] Collected: {f.name}")
                         
@@ -2419,6 +2549,9 @@ class Help(QWidget):
 
 def main():
     app = QApplication(sys.argv)
+    QCoreApplication.setOrganizationName("Julz876")
+    QCoreApplication.setApplicationName("HFWModManager")
+    # QCoreApplication.setOrganizationDomain("")
     lock_path = os.path.join(tempfile.gettempdir(), "HFW_Mod_Manager.lock")
     lock = QLockFile(lock_path)
 
