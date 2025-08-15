@@ -3,6 +3,8 @@ Simplifies managing and packing mods for Horizon Forbidden West. It provides an 
 
 Drag & drop mod folders or ZIPs, select variations, and pack activated mods into the game’s package stream.
 
+<img width="1194" height="841" alt="image" src="https://github.com/user-attachments/assets/a0eae584-cd1b-4d0b-b9df-0067da7bf7f8" />
+
 
 For better documentation and usage, check out this doc
 https://hfw-mm.gitbook.io/hfw-mm-docs/
