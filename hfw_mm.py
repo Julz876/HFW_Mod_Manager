@@ -28,7 +28,7 @@ FEAT_STRICT_HASH    = False
 FEAT_UPDATE_CHECKER = False
 FEAT_HELP_WEBENGINE = False
 FEAT_CONFLICT_COLOR = True
-FEAT_PILLOW_ICC     = False
+FEAT_PILLOW_ICC     = True
 # -------------------------
 
 # Configure logging
@@ -748,7 +748,7 @@ class ModManager(QWidget):
         self.setWindowIcon(QIcon(self.icon_path))
 
         self.metadata = {}
-        self.version = 0.6 # Current app version
+        self.version = 0.7 # Current app version
         self.prefs = QSettings()
 
         # Clean up old lists
@@ -2077,10 +2077,12 @@ class ModManager(QWidget):
                 else:
                     print("[!] Could not determine top-level path")
 
-                # Color checked top-level items
-                top.setForeground(0, magenta_brush if is_top_checked else default_brush)
+            # Color checked top-level items
+            if is_top_checked or top_has_checked_variant:
+                top.setForeground(0, magenta_brush)
             else:
                 top.setForeground(0, default_brush)
+
 
         # Save checked mod paths
         if FEAT_ACTIVATED_SAVE:
@@ -2245,7 +2247,7 @@ class ModManager(QWidget):
             top.setForeground(0, Qt.red if conflict_in_top else QBrush())
 
         return list(conflicts)
-    
+
     def collect_from_variants(self, variant_paths: list[Path], temp_dir: Path) -> bool:
         collected = False
         for f in variant_paths:
