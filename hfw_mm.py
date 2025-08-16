@@ -2033,6 +2033,8 @@ class ModManager(QWidget):
         checked_paths = []
         variant_paths = []
         top_paths = []
+        default_brush = QBrush()  # current theme/default
+        magenta_brush = QBrush(QColor("magenta"))
 
         for i in range(self.mod_list.topLevelItemCount()):
             top = self.mod_list.topLevelItem(i)
@@ -2043,19 +2045,27 @@ class ModManager(QWidget):
 
             for j in range(top.childCount()):
                 child = top.child(j)
-                if child.checkState(0) == Qt.Checked:
+                is_checked = child.checkState(0) == Qt.Checked
+
+                # Colorize based on checked status
+                child.setForeground(0, magenta_brush if is_checked else default_brush)
+
+                if is_checked:
                     child_path = child.data(0, Qt.UserRole)
                     if child_path:
                         variant_paths.append(Path(child_path))
                         first_checked_variant_path = Path(child_path)
                         print(f"[✓] Variant path: {child_path}")
                     top_has_checked_variant = True
-                    if FEAT_CONFLICT_COLOR:
-                        child.setForeground(0, Qt.magenta)
 
-            if top.checkState(0) == Qt.Checked or top_has_checked_variant:
-                if top.checkState(0) == Qt.Checked and top_path:
+            is_top_checked = top.checkState(0) == Qt.Checked
+
+            if is_top_checked or top_has_checked_variant:
+                if is_top_checked and top_path:
                     checked_paths.append(top_path)
+                    if top.childCount() == 0:
+                        # Treat as a variant for conflict checking
+                        variant_paths.append(Path(top_path))
 
                 if top_path:
                     top_paths.append(Path(top_path))
@@ -2067,11 +2077,11 @@ class ModManager(QWidget):
                 else:
                     print("[!] Could not determine top-level path")
 
-                if FEAT_CONFLICT_COLOR:
-                    top.setForeground(0, Qt.magenta)
+                # Color checked top-level items
+                top.setForeground(0, magenta_brush if is_top_checked else default_brush)
+            else:
+                top.setForeground(0, default_brush)
 
-            QApplication.instance().setStyleSheet("QWidget { color: black; }")
-                
         # Save checked mod paths
         if FEAT_ACTIVATED_SAVE:
             self.write_activated_list(checked_paths)
@@ -2172,53 +2182,67 @@ class ModManager(QWidget):
 
 
     def check_conflicts(self):
-        IGNORED_EXTENSIONS = { '.png', '.jpg', '.jpeg','.bmp', '.gif', '.txt', '.md', '.ini', '.json' }
+        IGNORED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.txt', '.md', '.ini', '.json'}
 
-        # Build a map of filename → count
-        name_counts = {}
+        # Collect all checked mod paths (variants + top-level mods)
+        checked_mod_paths = []
+
         for i in range(self.mod_list.topLevelItemCount()):
             top = self.mod_list.topLevelItem(i)
+            top_path = top.data(0, Qt.UserRole)
+            if top.checkState(0) == Qt.Checked and top_path:
+                checked_mod_paths.append(Path(top_path))
+
             for j in range(top.childCount()):
                 child = top.child(j)
-                if child.checkState(0) != Qt.Checked:
-                    continue
-                child_data = child.data(0, Qt.UserRole)
-                child_path = Path(child_data) if isinstance(child_data, (str, os.PathLike)) else None
-                if not child_path:
-                    continue
-                for f in child_path.rglob('*'):
-                    if f.is_file() and f.suffix.lower() not in IGNORED_EXTENSIONS:
-                        name_counts[f.name] = name_counts.get(f.name, 0) + 1
+                if child.checkState(0) == Qt.Checked:
+                    child_data = child.data(0, Qt.UserRole)
+                    if child_data:
+                        checked_mod_paths.append(Path(child_data))
 
-        # Detect and color conflicts
+        # Build name → count map
+        name_counts = {}
+        for path in checked_mod_paths:
+            for f in Path(path).rglob('*'):
+                if f.is_file() and f.suffix.lower() not in IGNORED_EXTENSIONS:
+                    name_counts[f.name] = name_counts.get(f.name, 0) + 1
+
+        # Conflict detection and coloring
         conflicts = set()
         for i in range(self.mod_list.topLevelItemCount()):
             top = self.mod_list.topLevelItem(i)
+            top_path = top.data(0, Qt.UserRole)
             conflict_in_top = False
 
+            # Check top-level mod directly
+            if top.checkState(0) == Qt.Checked and top_path:
+                for f in Path(top_path).rglob('*'):
+                    if f.is_file() and f.suffix.lower() not in IGNORED_EXTENSIONS:
+                        if name_counts.get(f.name, 0) > 1:
+                            conflicts.add(f.name)
+                            conflict_in_top = True
+                            break
+
+            # Check children
             for j in range(top.childCount()):
                 child = top.child(j)
                 child_data = child.data(0, Qt.UserRole)
-                child_path = Path(child_data) if isinstance(child_data, (str, os.PathLike)) else None
+                child_path = Path(child_data) if child_data else None
                 conflict = False
 
                 if child.checkState(0) == Qt.Checked and child_path:
                     for f in child_path.rglob('*'):
                         if f.is_file() and f.suffix.lower() not in IGNORED_EXTENSIONS:
                             if name_counts.get(f.name, 0) > 1:
-                                conflict = True
                                 conflicts.add(f.name)
+                                conflict = True
                                 break
 
-                # child.setForeground(0, Qt.yellow if conflict else test)
-                child.setForeground(0, Qt.red)
-
+                child.setForeground(0, Qt.red if conflict else QBrush())
                 if conflict:
                     conflict_in_top = True
 
-            if conflict_in_top:
-                top.setForeground(0, Qt.red)
-            # top.setForeground(0, Qt.yellow if conflict_in_top else test)
+            top.setForeground(0, Qt.red if conflict_in_top else QBrush())
 
         return list(conflicts)
     
