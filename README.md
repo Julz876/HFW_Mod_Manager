@@ -9,30 +9,49 @@ Drag & drop mod folders or ZIPs, select variations, and pack activated mods into
 For better documentation and usage, check out this doc
 https://hfw-mm.gitbook.io/hfw-mm-docs/
 
-## Requirements
+## Requirements (If running from source)
 
 - Python 3.8+ (tested on 3.12)
 - PyQt5
-- 
+- pillow
+- pyqtdarktheme
+- markdown
+- PyQtWebEngine
 
 ### Development (from source)
 
 If you wish to contribute or run from source:
 
+
 1. Clone this repository:
 
    ```bash
    git clone https://github.com/Julz876/HFW_Mod_Manager.git
-   cd hfw-mod-manager
+   cd hfw_mod_manager
    ```
-
-2. Install dependencies:
+   
+2. Set up a virtual environment (recommended)
+   ```bash
+   python -m venv venv
+   ```
+   
+   Then activate it
+   
+   ```bash
+   venv\Scripts\activate
+   ```
+   
+3. Install dependencies:
 
    ```bash
-   pip install PyQt5
+   pip install -r requirements.txt
    ```
 
-3. Place `Decima_pack.exe` in the same folder as `hfw_mm.py`, or adjust the `pack_dir` variable in `ModManager.pack_mods()`.
+3. Place `Decima_pack.exe` in the same folder as `hfw_mm.py`, or adjust the `pack_dir` variable in `ModManager.pack_mods_worker()`.
+   
+4. ```bash
+   python hfw_mm.py
+   ```
 
 
 ## Contributing
