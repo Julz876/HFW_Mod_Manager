@@ -34,7 +34,7 @@ FEAT_PILLOW_ICC     = False
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-REGISTRY_PATH = Path.cwd() / "mod.meta"
+REGISTRY_PATH = Path.cwd() / "meta.ini"
 # MAX_TOTAL_UNCOMPRESSED_SIZE = 250 * 1024 * 1024  # 250 MB
 MAX_TOTAL_UNCOMPRESSED_SIZE = 800 * 1024 * 1024  # Testing
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -60,7 +60,7 @@ def _load_mod_registry(path: Path = REGISTRY_PATH) -> dict:
             data = json.load(open(path, "r", encoding="utf-8"))
             return data if isinstance(data, dict) else {}
     except Exception as e:
-        print(f"[!] mod.meta read error: {e}")
+        print(f"[!] meta.ini read error: {e}")
     return {}
 
 def _normalize_key(name: str) -> str:
@@ -92,13 +92,7 @@ def _normpath(p: str) -> str:
 def _candidate_roots(mods_dir: Path, display_name: str, top_item: QTreeWidgetItem) -> list[Path]:
     if not FEAT_SMART_DELETE:
         return []
-    """
-    Find real mod roots in mods_dir for a UI display name that is normalized.
-    Sources:
-    1) UserRole path on the top item (and its parent if it points to a variant)
-    2) mod.meta entries whose *keys* normalize to the same display name
-    3) scan mods_dir for dirs/zips whose normalized stems equal the display name
-    """
+
     wanted = display_name.strip()
     cand = []
 
@@ -120,7 +114,7 @@ def _candidate_roots(mods_dir: Path, display_name: str, top_item: QTreeWidgetIte
             if rp != mods_dir and rp.is_dir():
                 cand.append(rp)
 
-    # From mod.meta by normalized key match
+    # From meta.ini by normalized key match
     reg = _load_mod_registry()
     for key, meta in reg.items():
         if key == "_meta":
@@ -597,7 +591,7 @@ class DropTreeWidget(QTreeWidget):
             root_src = source_path
             if not (source_path / 'shared_files').exists():
                 for f in root_src.iterdir():
-                    if f.suffix.lower() in ('.stream', '.core', '.png', '.jpg', '.jpeg'):
+                    if f.suffix.lower() in ('.json', '.stream', '.core', '.png', '.jpg', '.jpeg'):
                         shutil.copy(f, base_target / f.name)
 
         elif source_path.suffix.lower() == '.zip':
@@ -615,7 +609,7 @@ class DropTreeWidget(QTreeWidget):
                     with ZipFile(source_path) as z:
                         for info in z.infolist():
                             parts = Path(info.filename)
-                            if len(parts.parts) == 1 and parts.suffix.lower() in ('.stream', '.core', '.png', '.jpg', '.jpeg'):
+                            if len(parts.parts) == 1 and parts.suffix.lower() in ('.json', '.stream', '.core', '.png', '.jpg', '.jpeg'):
                                 dest = (mods_folder / mod_name) / parts.name
                                 dest.parent.mkdir(parents=True, exist_ok=True)
                                 with z.open(info) as src, open(dest, 'wb') as dst:
@@ -764,6 +758,9 @@ class ModManager(QWidget):
         legacy_ = Path.cwd() / 'mod_order.json'
         if legacy_.exists():
             legacy_.rename(legacy_.with_suffix('.legacy'))
+        legacy_ = Path.cwd() / 'mod.meta'
+        if legacy_.exists():
+            legacy_.rename(legacy_.with_suffix('.meta_legacy'))
 
         # Temp workspace for packing
         self.temp_dir = Path.cwd() / 'pack'
@@ -834,7 +831,7 @@ class ModManager(QWidget):
 
         # Conlict Mode Toggle
         self.conflict_check = QCheckBox("Flags")
-        self.conflict_check.setChecked(True)
+        self.conflict_check.setChecked(False)
         tl.addWidget(self.conflict_check)
         self.conflict_check.setToolTip("Detect and highlight conflicted files.")
 
@@ -867,7 +864,7 @@ class ModManager(QWidget):
             self.notify_meta_changes = QCheckBox("Notify change")
             self.notify_meta_changes.setToolTip("Notify when a mod's modinfo.json changed since last scan.")
             # load saved value
-            notify_on = self.prefs.value("ui/notify_meta_changes", True, type=bool)
+            notify_on = self.prefs.value("ui/notify_meta_changes", False, type=bool)
             self.notify_meta_changes.setChecked(notify_on)
             self.notify_meta_changes.stateChanged.connect(
                 lambda _: (self.prefs.setValue("ui/notify_meta_changes", self.notify_meta_changes.isChecked()),
@@ -935,6 +932,7 @@ class ModManager(QWidget):
                 btn.setToolTip(tip)
 
             rl.addWidget(btn)
+
         rl.addStretch()
         sl.addWidget(right, 1)
         sl.addLayout(about_layout)
@@ -1035,7 +1033,8 @@ class ModManager(QWidget):
         if enabled:
             app.setStyleSheet(qdarktheme.load_stylesheet())
         else:
-            app.setStyleSheet("")
+            # app.setStyleSheet("")
+            app.setStyleSheet("QWidget { color: black; }")
 
 
     def check_for_updates(self):
@@ -1192,7 +1191,7 @@ class ModManager(QWidget):
 
     def _load_merge_metadata_for_entry(self, entry: Path, mod_name_stem: str, tmp_extract: Path, registry: dict,
                                     changes_accum: list[tuple[str, dict]]):
-        meta_path = Path.cwd() / "mod.meta"
+        meta_path = REGISTRY_PATH
         existing = registry.get(mod_name_stem, {}) if isinstance(registry.get(mod_name_stem), dict) else {}
 
         # Find modinfo.json
@@ -1309,7 +1308,7 @@ class ModManager(QWidget):
         local_temp_root.mkdir(parents=True, exist_ok=True)
 
         mods_to_add = []
-        meta_path = Path.cwd() / "mod.meta"
+        meta_path = REGISTRY_PATH
         registry = _load_mod_registry()
         changes_accum = []
 
@@ -1322,7 +1321,7 @@ class ModManager(QWidget):
             tmp_extract = local_temp_root / f"{mod_name_stem}_extracted"
 
             if entry.is_file() and entry.suffix.lower() == '.zip':
-                needs_extract = not tmp_extract.exists() or not (Path.cwd() / "mod.meta").exists()
+                needs_extract = not tmp_extract.exists() or not REGISTRY_PATH.exists()
                 if needs_extract:
                     if tmp_extract.exists():
                         shutil.rmtree(tmp_extract)
@@ -1340,9 +1339,9 @@ class ModManager(QWidget):
             mods_to_add.append((priority, entry, mod_name, metadata))
 
         try:
-            _write_json_atomic(Path.cwd() / "mod.meta", registry)
+            _write_json_atomic(REGISTRY_PATH, registry)
         except Exception as e:
-            print(f"[!] Failed to persist mod.meta: {e}")
+            print(f"[!] Failed to persist meta.ini: {e}")
 
         if changes_accum and self.notify_meta_changes.isChecked():
             lines = []
@@ -1498,7 +1497,7 @@ class ModManager(QWidget):
         self.update_mod_order_labels()
 
 
-    # Append/Update mod.meta
+    # Append/Update meta.ini
     def parse_mod_info(self, entry, mod_name_stem, tmp_extract, meta_path):
         modinfo_path = tmp_extract / "modinfo.json"
         if not modinfo_path.exists():
@@ -1527,7 +1526,7 @@ class ModManager(QWidget):
             except Exception as e:
                 print(f"[!] Failed to parse modinfo.json in {entry.name}: {e}")
 
-        # Append/Update mod.meta
+        # Append/Update meta.ini
         try:
             # Load existing registry (if any)
             if meta_path.exists():
@@ -1552,7 +1551,7 @@ class ModManager(QWidget):
 
             _write_json_atomic(meta_path, registry)
         except Exception as e:
-            print(f"[!] Failed to update mod.meta: {e}")
+            print(f"[!] Failed to update meta.ini: {e}")
 
         return metadata
 
@@ -1955,9 +1954,9 @@ class ModManager(QWidget):
 
             # Tidy meta and refresh
             try:
-                self.prune_mod_meta(Path.cwd() / "mod.meta", mods_dir)
+                self.prune_mod_meta(REGISTRY_PATH, mods_dir)
             except Exception as e:
-                print(f"[mod.meta] prune failed: {e}")
+                print(f"[meta.ini] prune failed: {e}")
 
             self.refresh_list()
             self.status_label.setText(f"Removed: {removed_text}")
@@ -2052,7 +2051,7 @@ class ModManager(QWidget):
                         print(f"[✓] Variant path: {child_path}")
                     top_has_checked_variant = True
                     if FEAT_CONFLICT_COLOR:
-                        child.setForeground(0, Qt.green)
+                        child.setForeground(0, Qt.magenta)
 
             if top.checkState(0) == Qt.Checked or top_has_checked_variant:
                 if top.checkState(0) == Qt.Checked and top_path:
@@ -2069,7 +2068,9 @@ class ModManager(QWidget):
                     print("[!] Could not determine top-level path")
 
                 if FEAT_CONFLICT_COLOR:
-                    top.setForeground(0, Qt.green)
+                    top.setForeground(0, Qt.magenta)
+
+            QApplication.instance().setStyleSheet("QWidget { color: black; }")
                 
         # Save checked mod paths
         if FEAT_ACTIVATED_SAVE:
@@ -2169,8 +2170,9 @@ class ModManager(QWidget):
                     print(f"Error deleting {item}: {e}")
         self.status_label.setText("Restored game files and cleared pack mods.")
 
+
     def check_conflicts(self):
-        IGNORED_EXTENSIONS = { '.png', '.jpg', '.jpeg','.bmp', '.gif', '.txt', '.md', '.ini'}
+        IGNORED_EXTENSIONS = { '.png', '.jpg', '.jpeg','.bmp', '.gif', '.txt', '.md', '.ini', '.json' }
 
         # Build a map of filename → count
         name_counts = {}
@@ -2207,16 +2209,16 @@ class ModManager(QWidget):
                                 conflict = True
                                 conflicts.add(f.name)
                                 break
-                if self.prefs.value("ui/dark_mode", True):
-                    test = Qt.white
-                else:
-                    test = Qt.black
 
-                child.setForeground(0, Qt.yellow if conflict else test)
+                # child.setForeground(0, Qt.yellow if conflict else test)
+                child.setForeground(0, Qt.red)
+
                 if conflict:
                     conflict_in_top = True
 
-            top.setForeground(0, Qt.yellow if conflict_in_top else test)
+            if conflict_in_top:
+                top.setForeground(0, Qt.red)
+            # top.setForeground(0, Qt.yellow if conflict_in_top else test)
 
         return list(conflicts)
     
