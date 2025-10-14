@@ -1,3 +1,6 @@
+# NOT DEPRECATED
+However, all future releases will be available on Nexus https://www.nexusmods.com/horizonforbiddenwest/mods/137?tab=description
+
 # HFW Mod Manager
 Simplifies managing and packing mods for Horizon Forbidden West. It provides an intuitive GUI.
 
